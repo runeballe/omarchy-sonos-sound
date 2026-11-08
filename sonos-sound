@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+"""Read and set Sonos home-theater sound levels over local UPnP. Standard library only.
+
+  sonos-sound <ip> get                 JSON: volume, bass, sub, tv, music
+  sonos-sound <ip> set <key> <value>   set one level, then print the same JSON
+
+Keys and ranges (what the Sonos app allows):
+  volume  0..100   master volume
+  bass   -10..10   EQ bass
+  sub    -15..15   sub level (SubGain)
+  tv     -15..15   surround level while TV plays (SurroundLevel)
+  music  -15..15   surround level while music plays (MusicSurroundLevel)
+
+<ip> must be the home-theater speaker (Playbar/Beam/Arc), since it owns the
+sub and surround settings.
+"""
+import http.client
+import ipaddress
+import json
+import re
+import sys
+
+SERVICE = "urn:schemas-upnp-org:service:RenderingControl:1"
+PATH = "/MediaRenderer/RenderingControl/Control"
+RANGES = {"volume": (0, 100), "bass": (-10, 10), "sub": (-15, 15), "tv": (-15, 15), "music": (-15, 15)}
+EQ_TYPES = {"sub": "SubGain", "tv": "SurroundLevel", "music": "MusicSurroundLevel"}
+
+
+def soap(ip, action, args):
+    body = (
+        '<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" '
+        's:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body>'
+        f'<u:{action} xmlns:u="{SERVICE}"><InstanceID>0</InstanceID>{args}</u:{action}>'
+        "</s:Body></s:Envelope>"
+    )
+    conn = http.client.HTTPConnection(ip, 1400, timeout=3)
+    try:
+        conn.request("POST", PATH, body.encode(), {
+            "Content-Type": 'text/xml; charset="utf-8"',
+            "SOAPACTION": f'"{SERVICE}#{action}"',
+        })
+        resp = conn.getresponse()
+        data = resp.read(65536).decode("utf-8", "replace")
+    finally:
+        conn.close()
+    if resp.status != 200:
+        code = re.search(r"<errorCode>(\d+)</errorCode>", data)
+        raise RuntimeError(f"{action} refused" + (f" (UPnP {code.group(1)})" if code else f" (HTTP {resp.status})"))
+    return data
+
+
+def field(xml, tag):
+    m = re.search(rf"<{tag}>(-?\d+)</{tag}>", xml)
+    return int(m.group(1)) if m else None
+
+
+def get_all(ip):
+    out = {
+        "volume": field(soap(ip, "GetVolume", "<Channel>Master</Channel>"), "CurrentVolume"),
+        "bass": field(soap(ip, "GetBass", ""), "CurrentBass"),
+    }
+    for key, eq in EQ_TYPES.items():
+        try:
+            out[key] = field(soap(ip, "GetEQ", f"<EQType>{eq}</EQType>"), "CurrentValue")
+        except RuntimeError:
+            out[key] = None  # speaker has no sub or surrounds bonded
+    return out
+
+
+def set_one(ip, key, value):
+    lo, hi = RANGES[key]
+    value = max(lo, min(hi, value))
+    if key == "volume":
+        soap(ip, "SetVolume", f"<Channel>Master</Channel><DesiredVolume>{value}</DesiredVolume>")
+    elif key == "bass":
+        soap(ip, "SetBass", f"<DesiredBass>{value}</DesiredBass>")
+    else:
+        soap(ip, "SetEQ", f"<EQType>{EQ_TYPES[key]}</EQType><DesiredValue>{value}</DesiredValue>")
+
+
+def main(argv):
+    try:
+        ip = str(ipaddress.ip_address(argv[0]))
+        cmd = argv[1]
+        if cmd == "set":
+            key, value = argv[2], int(argv[3])
+            if key not in RANGES:
+                raise ValueError(f"unknown key {key}")
+            set_one(ip, key, value)
+        elif cmd != "get":
+            raise ValueError(f"unknown command {cmd}")
+        print(json.dumps({"ok": True, **get_all(ip)}))
+        return 0
+    except (IndexError, ValueError) as e:
+        print(json.dumps({"ok": False, "error": str(e) or "usage: sonos-sound <ip> get|set <key> <value>"}))
+        return 2
+    except (OSError, RuntimeError, http.client.HTTPException) as e:
+        print(json.dumps({"ok": False, "error": str(e) or type(e).__name__}))
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

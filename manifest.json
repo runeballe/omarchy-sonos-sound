@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "rune.sonos-sound",
+  "name": "Sonos Sound",
+  "version": "0.1.0",
+  "author": "Rune Balstad",
+  "license": "MIT",
+  "homepage": "https://github.com/runeballe/omarchy-sonos-sound",
+  "repository": "https://github.com/runeballe/omarchy-sonos-sound",
+  "description": "Sonos home-theater sound from the bar: volume, EQ bass, sub level and surround level for TV and music.",
+  "kinds": ["bar-widget"],
+  "entryPoints": { "barWidget": "BarWidget.qml" },
+  "barWidget": {
+    "displayName": "Sonos Sound",
+    "description": "Volume, bass, sub and surround levels for a Sonos home theater",
+    "category": "Media",
+    "allowMultiple": false,
+    "defaultSection": "center",
+    "defaults": { "host": "" },
+    "schema": [
+      { "key": "host", "type": "string", "label": "Soundbar IP (Playbar/Beam/Arc)" }
+    ]
+  }
+}
