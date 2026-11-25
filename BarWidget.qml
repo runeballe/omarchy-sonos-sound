@@ -88,8 +88,10 @@ Panel {
       if (root.levels.volume === undefined) { root.refresh(); return }
       var wheel = Util.wheelSteps(root.wheelAccumulator, delta)
       root.wheelAccumulator = wheel.remainder
+      // One volume step (the smallest Sonos has, 1 of 100) per wheel event,
+      // however fast the wheel or touchpad spins.
       if (wheel.steps !== 0)
-        root.setLevel("volume", Math.max(0, Math.min(100, root.levels.volume + wheel.steps * 2)))
+        root.setLevel("volume", Math.max(0, Math.min(100, root.levels.volume + (wheel.steps > 0 ? 1 : -1))))
     }
   }
 
@@ -115,8 +117,8 @@ Panel {
         Text {
           textFormat: Text.PlainText
           text: "Sonos lyd"
-          color: root.bar.foreground
-          font.family: root.bar.fontFamily
+          color: root.bar ? root.bar.foreground : Color.foreground
+          font.family: root.bar ? root.bar.fontFamily : Style.font.family
           font.pixelSize: Style.font.body
           font.bold: true
         }
@@ -128,7 +130,7 @@ Panel {
           textFormat: Text.PlainText
           text: root.error
           color: Color.urgent
-          font.family: root.bar.fontFamily
+          font.family: root.bar ? root.bar.fontFamily : Style.font.family
           font.pixelSize: Style.font.caption
         }
 
@@ -150,8 +152,8 @@ Panel {
               width: Style.space(104)
               textFormat: Text.PlainText
               text: row.modelData.label
-              color: root.bar.foreground
-              font.family: root.bar.fontFamily
+              color: root.bar ? root.bar.foreground : Color.foreground
+              font.family: root.bar ? root.bar.fontFamily : Style.font.family
               font.pixelSize: Style.font.caption
             }
 
@@ -183,7 +185,7 @@ Panel {
               readonly property int v: Math.round(slider.dragging ? slider.liveValue : (row.current || 0))
               text: (row.modelData.min < 0 && v > 0 ? "+" : "") + v
               color: root.dim
-              font.family: root.bar.fontFamily
+              font.family: root.bar ? root.bar.fontFamily : Style.font.family
               font.pixelSize: Style.font.caption
             }
           }
@@ -195,7 +197,7 @@ Panel {
           textFormat: Text.PlainText
           text: "Høyreklikk en EQ-slider for å nullstille den."
           color: root.dim
-          font.family: root.bar.fontFamily
+          font.family: root.bar ? root.bar.fontFamily : Style.font.family
           font.pixelSize: Style.font.caption
         }
       }
