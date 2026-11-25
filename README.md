@@ -27,7 +27,8 @@ Set up a DHCP reservation in your router so the IP stays the same.
 ## Use
 
 - Left-click the icon to open the popup.
-- Scroll on the icon to change the volume.
+- Scroll on the icon to change the volume, one step (1 of 100) per scroll event.
+- The volume slider never jumps: the speaker moves one step at a time to where you drag or click.
 - Right-click an EQ slider to reset it to 0.
 
 The popup reads the levels again every 3 seconds, so it picks up changes made in the Sonos app.
