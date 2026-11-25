@@ -21,8 +21,10 @@ Panel {
   property var queued: null           // { key, value } waiting for the running write to finish
   property real wheelAccumulator: 0
   property int volumeTarget: -1      // where the volume slider wants to go; -1 = nowhere
+  property int volumeLimit: 100      // highest volume allowed, 1..100; kept on this PC only
 
   readonly property var rows: [
+    { key: "limit", label: "Volumgrense", min: 1, max: 100 },
     { key: "volume", label: "Volum", min: 0, max: 100 },
     { key: "bass", label: "Bass", min: -10, max: 10 },
     { key: "sub", label: "Sub", min: -15, max: 15 },
@@ -36,7 +38,11 @@ Panel {
   function apply(text) {
     var data
     try { data = JSON.parse(text) } catch (e) { error = "Ingen svar fra hjelperen"; return }
-    if (data.ok) { levels = data; error = "" }
+    if (data.ok) {
+      levels = data; error = ""
+      // Turned up past the limit somewhere else (Sonos app, TV remote): bring it back down.
+      if (data.volume !== undefined && data.volume > volumeLimit && volumeTarget < 0) rampVolume(volumeLimit)
+    }
     else error = String(data.error || "Ukjent feil").slice(0, 120)
   }
 
@@ -49,7 +55,7 @@ Panel {
   // there one step (1 of 100) per write, so a click far along the track
   // cannot blast the room.
   function rampVolume(value) {
-    volumeTarget = Math.max(0, Math.min(100, Math.round(value)))
+    volumeTarget = Math.max(0, Math.min(volumeLimit, Math.round(value)))
     stepVolume()
   }
 
@@ -58,6 +64,32 @@ Panel {
     var current = levels.volume
     if (current === undefined || current === volumeTarget) { volumeTarget = -1; return }
     setLevel("volume", current + (volumeTarget > current ? 1 : -1))
+  }
+
+  function changed(key, value) {
+    if (key === "limit") setLimit(value)
+    else if (key === "volume") rampVolume(value)
+    else setLevel(key, value)
+  }
+
+  // The limit is ours, not the speaker's: it caps every volume change made
+  // here and pulls the volume down if it is above the new limit.
+  function setLimit(value) {
+    var limit = Math.max(1, Math.min(100, Math.round(value)))
+    if (limit === volumeLimit) return
+    volumeLimit = limit
+    limitFile.setText(String(limit) + "\n")
+    if (levels.volume !== undefined && levels.volume > limit) rampVolume(limit)
+  }
+
+  FileView {
+    id: limitFile
+    path: (Quickshell.env("HOME") || "") + "/.local/state/omarchy/sonos-sound-volume-limit"
+    printErrors: false
+    onLoaded: {
+      var n = parseInt(text(), 10)
+      if (n >= 1 && n <= 100) root.volumeLimit = n
+    }
   }
 
   // Dragging fires many values; send one at a time and keep only the newest.
@@ -108,7 +140,7 @@ Panel {
       // however fast the wheel or touchpad spins.
       if (wheel.steps !== 0) root.volumeTarget = -1
       if (wheel.steps !== 0)
-        root.setLevel("volume", Math.max(0, Math.min(100, root.levels.volume + (wheel.steps > 0 ? 1 : -1))))
+        root.setLevel("volume", Math.max(0, Math.min(root.volumeLimit, root.levels.volume + (wheel.steps > 0 ? 1 : -1))))
     }
   }
 
@@ -157,7 +189,7 @@ Panel {
           Item {
             id: row
             required property var modelData
-            readonly property var current: root.levels[modelData.key]
+            readonly property var current: modelData.key === "limit" ? root.volumeLimit : root.levels[modelData.key]
             visible: current !== null && current !== undefined
             width: content.width
             height: visible ? slider.implicitHeight : 0
@@ -186,21 +218,25 @@ Panel {
               step: 1
               integer: true
               value: row.current || 0
-              onMoved: function(v) { if (row.modelData.key === "volume") root.rampVolume(v); else root.setLevel(row.modelData.key, v) }
-              onReleased: function(v) { if (row.modelData.key === "volume") root.rampVolume(v); else root.setLevel(row.modelData.key, v) }
+              onMoved: function(v) { root.changed(row.modelData.key, v) }
+              onReleased: function(v) { root.changed(row.modelData.key, v) }
               // Right-click puts an EQ level back to 0; volume is left alone.
-              onRightClicked: if (row.modelData.key !== "volume") root.setLevel(row.modelData.key, 0)
+              // Right-click resets: an EQ level to 0, the limit to 100%; volume is left alone.
+              onRightClicked: {
+                if (row.modelData.key === "limit") root.setLimit(100)
+                else if (row.modelData.key !== "volume") root.setLevel(row.modelData.key, 0)
+              }
             }
 
             Text {
               id: number
               anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
-              width: Style.space(28)
+              width: Style.space(36)
               horizontalAlignment: Text.AlignRight
               textFormat: Text.PlainText
               readonly property int v: Math.round(slider.dragging ? slider.liveValue : (row.current || 0))
-              text: (row.modelData.min < 0 && v > 0 ? "+" : "") + v
+              text: (row.modelData.min < 0 && v > 0 ? "+" : "") + v + (row.modelData.key === "limit" ? "%" : "")
               color: root.dim
               font.family: root.bar ? root.bar.fontFamily : Style.font.family
               font.pixelSize: Style.font.caption
@@ -212,7 +248,7 @@ Panel {
           width: parent.width
           wrapMode: Text.Wrap
           textFormat: Text.PlainText
-          text: "Høyreklikk en EQ-slider for å nullstille den."
+          text: "Høyreklikk en EQ-slider for å nullstille den, eller volumgrensen for å sette den til 100 %."
           color: root.dim
           font.family: root.bar ? root.bar.fontFamily : Style.font.family
           font.pixelSize: Style.font.caption

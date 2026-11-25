@@ -4,6 +4,7 @@ A bar widget for the [Omarchy](https://omarchy.org/) shell that controls a Sonos
 
 | Slider | Range | Sonos setting |
 |---|---|---|
+| Volume limit | 1 % to 100 % | None, kept on this PC: the highest volume this widget allows |
 | Volume | 0 to 100 | Master volume |
 | Bass | −10 to +10 | EQ bass |
 | Sub | −15 to +15 | Sub level (`SubGain`) |
@@ -29,7 +30,8 @@ Set up a DHCP reservation in your router so the IP stays the same.
 - Left-click the icon to open the popup.
 - Scroll on the icon to change the volume, one step (1 of 100) per scroll event.
 - The volume slider never jumps: the speaker moves one step at a time to where you drag or click.
-- Right-click an EQ slider to reset it to 0.
+- Right-click an EQ slider to reset it to 0, or the volume limit to reset it to 100 %.
+- The volume limit (default 100 %) caps scrolling and the volume slider. Lowering it below the current volume brings the volume down to the limit, and so does turning it up past the limit from the Sonos app while the popup is open. It is stored in `~/.local/state/omarchy/sonos-sound-volume-limit`.
 
 The popup reads the levels again every 3 seconds, so it picks up changes made in the Sonos app.
 
