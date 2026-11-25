@@ -20,6 +20,7 @@ Panel {
   property string error: ""
   property var queued: null           // { key, value } waiting for the running write to finish
   property real wheelAccumulator: 0
+  property int volumeTarget: -1      // where the volume slider wants to go; -1 = nowhere
 
   readonly property var rows: [
     { key: "volume", label: "Volum", min: 0, max: 100 },
@@ -42,6 +43,21 @@ Panel {
   function refresh() {
     if (host === "") { error = "Sett soundbar-IP: omarchy bar set rune.sonos-sound host <ip>"; return }
     if (!readProc.running && !writeProc.running) readProc.running = true
+  }
+
+  // The volume never jumps: the slider sets a target and the speaker walks
+  // there one step (1 of 100) per write, so a click far along the track
+  // cannot blast the room.
+  function rampVolume(value) {
+    volumeTarget = Math.max(0, Math.min(100, Math.round(value)))
+    stepVolume()
+  }
+
+  function stepVolume() {
+    if (volumeTarget < 0 || writeProc.running) return
+    var current = levels.volume
+    if (current === undefined || current === volumeTarget) { volumeTarget = -1; return }
+    setLevel("volume", current + (volumeTarget > current ? 1 : -1))
   }
 
   // Dragging fires many values; send one at a time and keep only the newest.
@@ -67,7 +83,7 @@ Panel {
     id: writeProc
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: if (!root.queued) root.apply(text) }
     onExited: {
-      if (!root.queued) return
+      if (!root.queued) { root.stepVolume(); return }
       var q = root.queued
       root.queued = null
       root.setLevel(q.key, q.value)
@@ -90,6 +106,7 @@ Panel {
       root.wheelAccumulator = wheel.remainder
       // One volume step (the smallest Sonos has, 1 of 100) per wheel event,
       // however fast the wheel or touchpad spins.
+      if (wheel.steps !== 0) root.volumeTarget = -1
       if (wheel.steps !== 0)
         root.setLevel("volume", Math.max(0, Math.min(100, root.levels.volume + (wheel.steps > 0 ? 1 : -1))))
     }
@@ -169,8 +186,8 @@ Panel {
               step: 1
               integer: true
               value: row.current || 0
-              onMoved: function(v) { root.setLevel(row.modelData.key, v) }
-              onReleased: function(v) { root.setLevel(row.modelData.key, v) }
+              onMoved: function(v) { if (row.modelData.key === "volume") root.rampVolume(v); else root.setLevel(row.modelData.key, v) }
+              onReleased: function(v) { if (row.modelData.key === "volume") root.rampVolume(v); else root.setLevel(row.modelData.key, v) }
               // Right-click puts an EQ level back to 0; volume is left alone.
               onRightClicked: if (row.modelData.key !== "volume") root.setLevel(row.modelData.key, 0)
             }
